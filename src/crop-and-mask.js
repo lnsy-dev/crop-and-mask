@@ -30,8 +30,13 @@ class CropAndMask extends DataroomElement {
     this.cropRect = { x: 0, y: 0, width: 0, height: 0 };
     this.brushSize = 20;
     this.activeTool = 'pan';
+    this.colorVariance = 0.15;
     this.isOpencvReady = false;
     this.isOpencvLoading = false;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.maxHistory = 50;
+    this.isSavingState = false;
 
     // Create child components
     this.toolbar = this.create('toolbar-element');
@@ -43,6 +48,7 @@ class CropAndMask extends DataroomElement {
 
     this.setupEventListeners();
     this.setupDragAndDrop();
+    this.setupKeyboardShortcuts();
   }
 
   /**
@@ -92,6 +98,13 @@ class CropAndMask extends DataroomElement {
       this.download();
     });
 
+    this.toolbar.on('COLOR-VARIANCE-CHANGE', (detail) => {
+      this.colorVariance = detail.variance;
+    });
+
+    this.toolbar.on('UNDO', () => this.undo());
+    this.toolbar.on('REDO', () => this.redo());
+
     // Canvas editor events
     this.canvasEditor.on('ZOOM-PAN', (detail) => {
       this.zoom = detail.zoom;
@@ -108,6 +121,15 @@ class CropAndMask extends DataroomElement {
       this.maskBrush.setOverlaySize(this.canvasEditor.canvas.width, this.canvasEditor.canvas.height);
     });
 
+    this.canvasEditor.on('COLOR-MASK', (detail) => {
+      this.maskByColor(detail.x, detail.y);
+      this.saveState();
+    });
+
+    this.canvasEditor.on('CROP-BEGIN', () => {
+      this.saveState();
+    });
+
     // Mask brush events
     this.renderPending = false;
     this.maskBrush.on('MASK-UPDATED', () => {
@@ -118,6 +140,10 @@ class CropAndMask extends DataroomElement {
         this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
         this.canvasEditor.render();
       });
+    });
+
+    this.maskBrush.on('MASK-BEGIN', () => {
+      this.saveState();
     });
   }
 
@@ -170,6 +196,11 @@ class CropAndMask extends DataroomElement {
         requestAnimationFrame(() => {
           this.canvasEditor.fit();
         });
+
+        // Clear history when a new image is loaded
+        this.undoStack = [];
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
       };
       img.src = e.target.result;
     };
@@ -203,6 +234,63 @@ class CropAndMask extends DataroomElement {
   }
 
   /**
+   * Mask pixels similar to the color at the given world coordinates.
+   *
+   * @param {number} worldX
+   * @param {number} worldY
+   */
+  maskByColor(worldX, worldY) {
+    if (!this.image) return;
+
+    const imgW = this.image.naturalWidth;
+    const imgH = this.image.naturalHeight;
+    const pixelX = Math.max(0, Math.min(imgW - 1, Math.floor(worldX)));
+    const pixelY = Math.max(0, Math.min(imgH - 1, Math.floor(worldY)));
+
+    // Get image pixel data
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imgW;
+    tempCanvas.height = imgH;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(this.image, 0, 0);
+    const imageData = tempCtx.getImageData(0, 0, imgW, imgH);
+
+    // Sample the clicked color
+    const idx = (pixelY * imgW + pixelX) * 4;
+    const sampleR = imageData.data[idx];
+    const sampleG = imageData.data[idx + 1];
+    const sampleB = imageData.data[idx + 2];
+
+    // Update existing mask
+    const mask = this.maskBrush.getMaskCanvas();
+    const maskCtx = mask.getContext('2d');
+    const maskData = maskCtx.getImageData(0, 0, mask.width, mask.height);
+
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+
+      const dr = Math.abs(r - sampleR) / 255;
+      const dg = Math.abs(g - sampleG) / 255;
+      const db = Math.abs(b - sampleB) / 255;
+
+      if (dr <= this.colorVariance && dg <= this.colorVariance && db <= this.colorVariance) {
+        maskData.data[i] = 0;
+        maskData.data[i + 1] = 0;
+        maskData.data[i + 2] = 0;
+        maskData.data[i + 3] = 0;
+      }
+    }
+
+    this.saveState();
+
+    maskCtx.putImageData(maskData, 0, 0);
+    this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
+    this.canvasEditor.render();
+  }
+
+  /**
    * Handle background removal request.
    */
   async handleRemoveBackground() {
@@ -210,11 +298,13 @@ class CropAndMask extends DataroomElement {
     const ready = await this.ensureOpenCV();
     if (!ready) return;
 
+    this.saveState();
+
     try {
       const maskCanvas = this.maskBrush.getMaskCanvas();
       const resultMask = await removeBackground(this.image, maskCanvas);
       this.maskBrush.setMaskCanvas(resultMask);
-      this.canvasEditor.setMaskCanvas(resultMask);
+      this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
       this.canvasEditor.render();
     } catch (err) {
       console.error('Background removal failed:', err);
@@ -229,15 +319,130 @@ class CropAndMask extends DataroomElement {
     const ready = await this.ensureOpenCV();
     if (!ready) return;
 
+    this.saveState();
+
     try {
       const maskCanvas = this.maskBrush.getMaskCanvas();
       const refined = await refineMask(maskCanvas);
       this.maskBrush.setMaskCanvas(refined);
-      this.canvasEditor.setMaskCanvas(refined);
+      this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
       this.canvasEditor.render();
     } catch (err) {
       console.error('Mask refinement failed:', err);
     }
+  }
+
+  /**
+   * Save the current document state to the undo stack.
+   */
+  saveState() {
+    if (this.isSavingState || !this.image) return;
+    this.isSavingState = true;
+
+    const mask = this.maskBrush.getMaskCanvas();
+    const maskClone = document.createElement('canvas');
+    maskClone.width = mask.width;
+    maskClone.height = mask.height;
+    maskClone.getContext('2d').drawImage(mask, 0, 0);
+
+    this.undoStack.push({
+      maskCanvas: maskClone,
+      cropRect: { ...this.cropRect },
+    });
+
+    if (this.undoStack.length > this.maxHistory) {
+      this.undoStack.shift();
+    }
+
+    this.redoStack = [];
+    this.updateUndoRedoButtons();
+    this.isSavingState = false;
+  }
+
+  /**
+   * Undo the last operation.
+   */
+  undo() {
+    if (this.undoStack.length === 0 || !this.image) return;
+
+    // Save current state to redo stack
+    const mask = this.maskBrush.getMaskCanvas();
+    const currentMaskClone = document.createElement('canvas');
+    currentMaskClone.width = mask.width;
+    currentMaskClone.height = mask.height;
+    currentMaskClone.getContext('2d').drawImage(mask, 0, 0);
+
+    this.redoStack.push({
+      maskCanvas: currentMaskClone,
+      cropRect: { ...this.cropRect },
+    });
+
+    // Restore previous state
+    const state = this.undoStack.pop();
+    this.cropRect = { ...state.cropRect };
+    this.maskBrush.setMaskCanvas(state.maskCanvas);
+    this.canvasEditor.setCropRect(this.cropRect);
+    this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
+    this.canvasEditor.render();
+    this.updateUndoRedoButtons();
+  }
+
+  /**
+   * Redo the last undone operation.
+   */
+  redo() {
+    if (this.redoStack.length === 0 || !this.image) return;
+
+    // Save current state to undo stack
+    const mask = this.maskBrush.getMaskCanvas();
+    const currentMaskClone = document.createElement('canvas');
+    currentMaskClone.width = mask.width;
+    currentMaskClone.height = mask.height;
+    currentMaskClone.getContext('2d').drawImage(mask, 0, 0);
+
+    this.undoStack.push({
+      maskCanvas: currentMaskClone,
+      cropRect: { ...this.cropRect },
+    });
+
+    // Restore next state
+    const state = this.redoStack.pop();
+    this.cropRect = { ...state.cropRect };
+    this.maskBrush.setMaskCanvas(state.maskCanvas);
+    this.canvasEditor.setCropRect(this.cropRect);
+    this.canvasEditor.setMaskCanvas(this.maskBrush.getMaskCanvas());
+    this.canvasEditor.render();
+    this.updateUndoRedoButtons();
+  }
+
+  /**
+   * Update the enabled state of undo/redo buttons.
+   */
+  updateUndoRedoButtons() {
+    this.toolbar.setUndoRedoState({
+      undo: this.undoStack.length > 0,
+      redo: this.redoStack.length > 0,
+    });
+  }
+
+  /**
+   * Set up keyboard shortcuts for undo/redo.
+   * Supports Cmd+Z / Ctrl+Z (undo) and Cmd+Y / Ctrl+Y / Cmd+Shift+Z / Ctrl+Shift+Z (redo).
+   */
+  setupKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        this.undo();
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        this.redo();
+      }
+    });
   }
 
   /**

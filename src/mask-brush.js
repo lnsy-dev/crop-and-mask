@@ -63,6 +63,7 @@ class MaskBrush extends DataroomElement {
     if (!this.isBrushActive()) return;
     if (e.button !== 0) return;
 
+    this.event('MASK-BEGIN');
     this.isDrawing = true;
     this.lastPoint = this.getMaskPoint(e);
     this.drawPoint(this.lastPoint);
@@ -100,6 +101,7 @@ class MaskBrush extends DataroomElement {
     this.isDrawing = false;
     this.lastPoint = null;
     this.event('MASK-UPDATED');
+    this.event('MASK-END');
   }
 
   /**

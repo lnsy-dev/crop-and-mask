@@ -125,6 +125,14 @@ class CanvasEditor extends DataroomElement {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    // Color mask tool: sample on click, no drag
+    if (this.activeTool === 'color-mask' && e.button === 0) {
+      const worldX = (x - this.pan.x) / this.zoom;
+      const worldY = (y - this.pan.y) / this.zoom;
+      this.event('COLOR-MASK', { x: worldX, y: worldY });
+      return;
+    }
+
     this.isDragging = true;
     this.dragStart = { x, y };
     this.dragStartPan = { ...this.pan };
@@ -132,6 +140,11 @@ class CanvasEditor extends DataroomElement {
 
     // Always check for handle hit (handles are always visible)
     this.activeHandle = this.getHandleAt(x, y);
+
+    const hadCropInteraction = this.activeHandle || this.activeTool === 'crop';
+    if (hadCropInteraction) {
+      this.event('CROP-BEGIN');
+    }
 
     const isPanning = this.activeTool === 'pan' || e.button === 1;
 
@@ -160,6 +173,8 @@ class CanvasEditor extends DataroomElement {
         this.canvas.style.cursor = this.getHandleCursor(handle);
       } else if (this.activeTool === 'crop') {
         this.canvas.style.cursor = 'move';
+      } else if (this.activeTool === 'color-mask') {
+        this.canvas.style.cursor = 'crosshair';
       } else {
         this.canvas.style.cursor = this.activeTool === 'pan' ? 'grab' : 'default';
       }
@@ -195,10 +210,17 @@ class CanvasEditor extends DataroomElement {
    */
   onPointerUp(e) {
     if (!this.isDragging) return;
+
+    const hadCropInteraction = this.activeHandle || this.activeTool === 'crop';
+
     this.isDragging = false;
     this.activeHandle = null;
     this.isMiddlePanning = false;
     this.canvas.style.cursor = this.activeTool === 'pan' ? 'grab' : 'default';
+
+    if (hadCropInteraction) {
+      this.event('CROP-END');
+    }
   }
 
   /**

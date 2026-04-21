@@ -52,6 +52,7 @@ class Toolbar extends DataroomElement {
       { name: 'crop', label: 'Crop' },
       { name: 'brush-add', label: 'Mask' },
       { name: 'brush-remove', label: 'Unmask' },
+      { name: 'color-mask', label: 'Color' },
     ];
 
     tools.forEach((tool) => {
@@ -81,6 +82,26 @@ class Toolbar extends DataroomElement {
     }, this.brushSizeContainer);
     this.brushSizeInput.addEventListener('input', (e) => {
       this.event('BRUSH-SIZE-CHANGE', { size: parseInt(e.target.value, 10) });
+    });
+
+    // Color variance input (hidden by default)
+    this.varianceContainer = this.create('div', {
+      class: 'toolbar-group variance-group hidden',
+    });
+    this.create('label', {
+      content: 'Var:',
+      class: 'toolbar-label',
+    }, this.varianceContainer);
+    this.varianceInput = this.create('input', {
+      type: 'number',
+      min: '0',
+      max: '1',
+      step: '0.01',
+      value: '0.15',
+      class: 'variance-input',
+    }, this.varianceContainer);
+    this.varianceInput.addEventListener('input', (e) => {
+      this.event('COLOR-VARIANCE-CHANGE', { variance: parseFloat(e.target.value) });
     });
 
     // Zoom controls
@@ -119,6 +140,22 @@ class Toolbar extends DataroomElement {
     }, cvGroup);
     this.refineButton.addEventListener('click', () => this.event('REFINE-MASK'));
 
+    // Undo / Redo buttons
+    const undoRedoGroup = this.create('div', { class: 'toolbar-group' });
+    this.undoButton = this.create('button', {
+      content: 'Undo',
+      class: 'toolbar-button',
+      disabled: true,
+    }, undoRedoGroup);
+    this.undoButton.addEventListener('click', () => this.event('UNDO'));
+
+    this.redoButton = this.create('button', {
+      content: 'Redo',
+      class: 'toolbar-button',
+      disabled: true,
+    }, undoRedoGroup);
+    this.redoButton.addEventListener('click', () => this.event('REDO'));
+
     // Download button
     const downloadBtn = this.create('button', {
       content: 'Download',
@@ -141,7 +178,9 @@ class Toolbar extends DataroomElement {
     this.event('TOOL-CHANGE', { tool: toolName });
 
     const isBrush = toolName === 'brush-add' || toolName === 'brush-remove';
+    const isColor = toolName === 'color-mask';
     this.brushSizeContainer.classList.toggle('hidden', !isBrush);
+    this.varianceContainer.classList.toggle('hidden', !isColor);
   }
 
   /**
@@ -163,6 +202,16 @@ class Toolbar extends DataroomElement {
     this.removeBgButton.disabled = !enabled || loading;
     this.refineButton.disabled = !enabled || loading;
     this.removeBgButton.textContent = loading ? 'Loading…' : 'Remove BG';
+  }
+
+  /**
+   * Enable or disable undo/redo buttons.
+   *
+   * @param {{undo: boolean, redo: boolean}} state
+   */
+  setUndoRedoState(state) {
+    this.undoButton.disabled = !state.undo;
+    this.redoButton.disabled = !state.redo;
   }
 }
 
