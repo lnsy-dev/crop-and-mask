@@ -1,0 +1,38 @@
+/*
+  *** begin ascii art ***
+
+   _    _____    ____  _______    ____  __    ___________
+  | |  / /   |  / __ \/  _/   |  / __ )/ /   / ____/ ___/
+  | | / / /| | / /_/ // // /| | / __  / /   / __/  \__ \
+  | |/ / ___ |/ _, _// // ___ |/ /_/ / /___/ /___ ___/ /
+  |___/_/  |_/_/ |_/___/_/  |_/_____/_____/_____//____/
+
+  *** end ascii art ***
+
+  Monochrome aesthetic variables for crop-and-mask.
+*/
+
+:root {
+  --background-color: #ffffff;
+  --foreground-color: #000000;
+  --highlight-color: #eeeeee;
+  --secondary-color: #f5f5f5;
+  --trinary-color: #999999;
+  --quaternary-color: #dddddd;
+  --confirmation-color: #000000;
+  --notification-color: #333333;
+  --inactive-color: #cccccc;
+  --warning-color: #666666;
+  --error-color: #ff4444;
+  --neutral-color: #222222;
+  --canvas-bg: #111111;
+  --checker-color-1: #1a1a1a;
+  --checker-color-2: #222222;
+  --font-family: 'Fira Code', monospace;
+  --h1-font-size: 200%;
+  --h2-font-size: 180%;
+  --h3-font-size: 150%;
+  --border-width: 1px;
+  --handle-size: 8px;
+  --button-padding: 0.5rem 1rem;
+}

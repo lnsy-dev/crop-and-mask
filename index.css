@@ -1,0 +1,48 @@
+/*
+
+  *** begin ascii art ***
+
+            CCCCCCCCCCCCC   SSSSSSSSSSSSSSS    SSSSSSSSSSSSSSS
+         CCC::::::::::::C SS:::::::::::::::S SS:::::::::::::::S
+       CC:::::::::::::::CS:::::SSSSSS::::::SS:::::SSSSSS::::::S
+      C:::::CCCCCCCC::::CS:::::S     SSSSSSSS:::::S     SSSSSSS
+     C:::::C       CCCCCCS:::::S            S:::::S
+    C:::::C              S:::::S            S:::::S
+    C:::::C               S::::SSSS          S::::SSSS
+    C:::::C                SS::::::SSSSS      SS::::::SSSSS
+    C:::::C                  SSS::::::::SS      SSS::::::::SS
+    C:::::C                     SSSSSS::::S        SSSSSS::::S
+    C:::::C                          S:::::S            S:::::S
+     C:::::C       CCCCCC            S:::::S            S:::::S
+      C:::::CCCCCCCC::::CSSSSSSS     S:::::SSSSSSSS     S:::::S
+       CC:::::::::::::::CS::::::SSSSSS:::::SS::::::SSSSSS:::::S
+         CCC::::::::::::CS:::::::::::::::SS S:::::::::::::::SS
+            CCCCCCCCCCCCC SSSSSSSSSSSSSSS    SSSSSSSSSSSSSSS
+t                            The CSS file
+
+  *** end ascii art ***
+
+*/
+
+@import "./styles/variables.css";
+@import "./styles/crop-and-mask.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--background-color);
+  color: var(--foreground-color);
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.4;
+}
